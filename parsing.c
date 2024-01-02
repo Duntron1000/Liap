@@ -36,9 +36,11 @@ static char* message = "";
 /* Use operator string to see which operation to perform */
 long eval_op(long x, char* op, long y) {
     if(strcmp(op, "+") == 0 || strcmp(op, "add") == 0) {return x + y; }
-    if(strcmp(op, "-") == 0 || strcmp(op, "sub") == 0) {return x - y; }
+    if(strcmp(op, "-") == 0 || strcmp(op, "sub") == 0) {return -1 * x; }
     if(strcmp(op, "*") == 0 || strcmp(op, "mul") == 0) {return x * y; }
     if(strcmp(op, "/") == 0 || strcmp(op, "div") == 0) {return x / y; }
+    if(strcmp(op, "min") == 0 ) {return fmin(x, y); }
+    if(strcmp(op, "max") == 0 ) {return fmax(x, y); }
     if(strcmp(op, "^") == 0) {return pow(x, y); }
     if(strcmp(op, "%") == 0) {return x % y; }
     return 0;
@@ -92,7 +94,8 @@ int main(int argc, char** argv) {
         "                                                       \
             number   : /-?[0-9]+/ ;                             \
             operator : '+' | '-' | '*' | '/' | '%' | '^'        \
-                     | \"add\" | \"sub\" | \"mul\" | \"div\" ;  \
+                     | \"add\" | \"sub\" | \"mul\" | \"div\"    \
+                     | \"min\" | \"max\" ;                      \
             expr     : <number> | '(' <operator> <expr>+ ')' ;  \
             lispy    : /^/  <operator> <expr>+ /$/ ;            \
         ",
@@ -116,10 +119,8 @@ int main(int argc, char** argv) {
         mpc_result_t r;
         if (mpc_parse("<stdin>", input, Lispy, &r)) {
             /* On Success Print the AST */
-            mpc_ast_print(r.output);
             long result = eval(r.output);
             printf("%li\n", result);
-            printf("That tree has %d branches\n", numBranches(r.output));
             mpc_ast_delete(r.output);
         } else {
             /* Otherwise Print the Error */
