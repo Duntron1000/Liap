@@ -34,32 +34,77 @@ static char* message = "";
 #endif
 
 /* Declare New lval Struct */
-typedef struct {
+typedef struct lval {
     int type;
-    long num;
-    int err;
+    double num;
+    /* Error and sybol types have some string data */
+    char* err;
+    char* sym;
+    /* Count and Pointer to a list of "lval*" */
+    int count;
+    struct lval** cell;
 } lval;
 
 /* Create Enumeration of Possible lval Types */
-enum { LVAL_NUM, LVAL_ERR };
+enum { LVAL_ERR, LAVL_NUM, LAVL_SYM, LAVL_SEXPR };
 
-/* Create Enumeration of Possible Error Types */
-enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
-
-/* Create a new number type lval */
-lval lval_num(long x) {
-    lval v;
-    v.type = LVAL_NUM;
-    v.num = x;
+/* Construct a pointer to a new Number lval */
+lval* lval_num(double x) {
+    lval * v = malloc(sizeof(lval));
+    v->type = LVAL_NUM;
+    v->num = x;
     return v;
 }
 
-/* Create a new error type lval */
-lval lval_err(int x) {
-    lval v;
-    v.type = LVAL_ERR;
-    v.err = x;
+/* Construct a pointer to a new Error lval */
+lval* lval_err(char* m) {
+    lval* v malloc(sizeof(lval));
+    v->type = LVAL_ERR;
+    v->err = malloc(strlen(m) + 1);
+    strcpy(v->err, m);
     return v;
+}
+
+/* Construct a pointer to a new Symbol lval */
+lval* lval_sym(char* s) {
+    lval* v = maloc (sizeof(lval));
+    v->type = LVAL_SYM;
+    v->sym = malloc(strlen(s) + 1);
+    strcpy(v->sym, s);
+    return v;
+}
+
+/* A pointer to a new empy Sexpr laval */
+lval* lval_sexpr(void) {
+    lval* v = malloc(sizeof(lval));
+    v->type = LVAL_SEXPR;
+    v->count = 0;
+    v->cell = Null;
+    return v;
+}
+
+void lval_del(lval* v) {
+
+    switch (v->type) {
+        /* Do nothing special for number type */
+        case LVAL_NUM: break;
+
+        /* For Err or SYM free the string data */
+        case LVAL_ERR: free(v->err): break;
+        case LVAL_SYM: free(v->sym): break;
+
+        /* For Sexpr then delete all elements inside */
+        case LVAL_SEXPR:
+            for (int i = 0; i < v->count; i++) {
+                lval_del(v->cell[i]);
+            }
+            /* Also free the memory allocated to contain the pointers */
+            free(v->cells);
+        break;
+    }
+
+    /* Free the memory allocated for the "lval" struct itself */
+    free(v(;
 }
 
 /* Print an "lval" */
@@ -67,7 +112,7 @@ void lval_print(lval v) {
     switch (v.type) {
         /* In the case the type is a number print it */
         /* Then 'break' out of the switch. */
-        case LVAL_NUM: printf("%li", v.num); break;
+        case LVAL_NUM: printf("%f", v.num); break;
 
         /* In the case the type is an error */
         case LVAL_ERR:
@@ -102,7 +147,7 @@ lval eval_op(lval x, char* op, lval y) {
     if(strcmp(op, "min") == 0 ) {return lval_num(fmin(x.num, y.num)); }
     if(strcmp(op, "max") == 0 ) {return lval_num(fmax(x.num, y.num)); }
     if(strcmp(op, "^") == 0) {return lval_num(pow(x.num, y.num)); }
-    if(strcmp(op, "%") == 0) {return lval_num(x.num % y.num); }
+    if(strcmp(op, "%") == 0) {return lval_num(fmod(x.num, y.num)); }
     if(strcmp(op, "/") == 0 || strcmp(op, "div") == 0) {
         return y.num == 0
             ? lval_err(LERR_DIV_ZERO)
@@ -116,7 +161,7 @@ lval eval(mpc_ast_t* t) {
     if (strstr(t->tag, "number")) {
         /* Check if there is some error in conversion */
         errno = 0;
-        long x = strtol(t->contents, NULL, 10);
+        long x = strtof(t->contents, NULL);
         return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
     }
 
@@ -153,7 +198,8 @@ int numLeaves(mpc_ast_t* t) {
 int main(int argc, char** argv) {
     /* Create Some Parsers */
     mpc_parser_t* Number = mpc_new("number");
-    mpc_parser_t* Operator = mpc_new("operator");
+    mpc_parser_t* Symbol = mpc_new("symbol");
+    mpc_parser_t* Sexpr = mpc_new("sexpr");
     mpc_parser_t* Expr = mpc_new("expr");
     mpc_parser_t* Lispy = mpc_new("lispy");
 
@@ -161,13 +207,14 @@ int main(int argc, char** argv) {
     mpca_lang(MPCA_LANG_DEFAULT,
         "                                                       \
             number   : /-?[0-9]+/ ;                             \
-            operator : '+' | '-' | '*' | '/' | '%' | '^'        \
+            symbol   : '+' | '-' | '*' | '/' | '%' | '^'        \
                      | \"add\" | \"sub\" | \"mul\" | \"div\"    \
                      | \"min\" | \"max\" ;                      \
-            expr     : <number> | '(' <operator> <expr>+ ')' ;  \
-            lispy    : /^/  <operator> <expr>+ /$/ ;            \
+            sexpr    : '(' <expr>* ')' ;                        \
+            expr     : <number> | <symbol> | <sexpr> ;          \
+            lispy    : /^/ <expr> /$/ ;                         \
         ",
-        Number, Operator, Expr, Lispy);
+        Number, Symbol, Sexpr, Expr, Lispy);
 
     /* Print Version and Exit information */
     puts("Xylophone Version 0.0.0.0.3");
@@ -201,7 +248,7 @@ int main(int argc, char** argv) {
 
     }
 
-    mpc_cleanup(4, Number, Operator, Expr, Lispy);
+    mpc_cleanup(5, Number, Symbol, Sexpr, Expr, Lispy);
 
     return 0;
 }
